@@ -12,8 +12,8 @@ const (
 )
 
 type GinCsrfMiddleware struct {
-	skipConditionFunc func(ctx *gin.Context) bool // 跳过验证的请求
-	errorFunc         func(ctx *gin.Context)
+	skipConditionFunc func(ctx *gin.Context) bool // 判断是否跳过中间件逻辑
+	errorFunc         func(ctx *gin.Context)      // 拦截后的请求处理
 }
 
 // NewCsrfMiddleware 创建 CSRF 中间件
@@ -30,6 +30,7 @@ func (g *GinCsrfMiddleware) SkipCondition(fn func(ctx *gin.Context) bool) *GinCs
 	g.skipConditionFunc = func(ctx *gin.Context) bool {
 		defer func() {
 			if err := recover(); err != nil {
+				// 保证方法别出错
 				fmt.Println(err)
 			}
 		}()
