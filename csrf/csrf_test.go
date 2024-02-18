@@ -30,10 +30,16 @@ func (s *CsrfMiddlewareTestSuite) SetupSuite() {
 		s.token = token
 	})
 	// 配置中间件, 中间件要在登录校验后配置，否则无法登录
-	server.Use(NewCsrfMiddlewareOption("secret", func(c *gin.Context) {
-		c.String(400, "CSRF token mismatch")
-		c.Abort()
-	}))
+	server.Use(NewCsrfMiddleware().SkipCondition(func(ctx *gin.Context) bool {
+		if ctx.Request.URL.Path == "/login" { // 登录的接口不校验
+			return true
+		}
+		return false
+	}).ErrorFunc(func(ctx *gin.Context) {
+		ctx.String(http.StatusForbidden, "csrf token is not valid")
+		ctx.Abort()
+	}).Builder())
+
 	s.server.POST("/test", func(c *gin.Context) {
 		c.String(http.StatusOK, "OK")
 	})
@@ -85,8 +91,8 @@ func (s *CsrfMiddlewareTestSuite) TestCsrfMiddleware() {
 			},
 			wantCode: http.StatusOK,
 			method:   "POST",
-			header:   map[string]string{"X-CSRF-Token": s.token},
-			url:      "/test",
+			header:   map[string]string{"X-CSRF-Token": s.token, "Cookie": ""},
+			url:      "/demo",
 			body:     `{}`,
 		},
 	}

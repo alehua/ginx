@@ -1,6 +1,7 @@
 package csrf
 
 import (
+	"fmt"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -10,27 +11,53 @@ const (
 	csrfToken = "csrf_token"
 )
 
-// NewCsrfMiddlewareOption
-/*
- * 初始化CSRF中间件，并设置错误处理函数。
- * @param secret 密钥
- * @param errorFunc 错误处理函数
- */
-func NewCsrfMiddlewareOption(secret string, errorFunc func(ctx *gin.Context)) gin.HandlerFunc {
+type GinCsrfMiddleware struct {
+	skipConditionFunc func(ctx *gin.Context) bool // 跳过验证的请求
+	errorFunc         func(ctx *gin.Context)
+}
+
+// NewCsrfMiddleware 创建 CSRF 中间件
+func NewCsrfMiddleware() *GinCsrfMiddleware {
+	return &GinCsrfMiddleware{
+		skipConditionFunc: func(ctx *gin.Context) bool { return false }, // 默认都不跳过
+		errorFunc: func(ctx *gin.Context) {
+			ctx.AbortWithStatus(403) // 默认终止请求并返回403
+		},
+	}
+}
+
+func (g *GinCsrfMiddleware) SkipCondition(fn func(ctx *gin.Context) bool) *GinCsrfMiddleware {
+	g.skipConditionFunc = func(ctx *gin.Context) bool {
+		defer func() {
+			if err := recover(); err != nil {
+				fmt.Println(err)
+			}
+		}()
+		return fn(ctx)
+	}
+	return g
+}
+
+func (g *GinCsrfMiddleware) ErrorFunc(fn func(ctx *gin.Context)) *GinCsrfMiddleware {
+	g.errorFunc = fn
+	return g
+}
+
+func (g *GinCsrfMiddleware) Builder() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		session := sessions.Default(ctx)
 		recordToken, ok := session.Get(csrfToken).(string)
 		// 判断是否存在
 		// 如果不存在，则有人在搞你
 		if !ok || len(recordToken) == 0 {
-			errorFunc(ctx)
+			g.errorFunc(ctx)
 			return
 		}
 		// 判断是否正确
 		// 不正确，则有人篡改了token
-		reqToken := extractToken(ctx)
+		reqToken := g.extractToken(ctx)
 		if reqToken != recordToken {
-			errorFunc(ctx)
+			g.errorFunc(ctx)
 			return
 		}
 		ctx.Next()
@@ -60,7 +87,7 @@ func GetToken(c *gin.Context) (string, error) {
 
 // extractToken
 // 从请求中获取token
-func extractToken(ctx *gin.Context) string {
+func (g *GinCsrfMiddleware) extractToken(ctx *gin.Context) string {
 	r := ctx.Request
 	if t := r.FormValue("csrf"); len(t) > 0 {
 		return t
